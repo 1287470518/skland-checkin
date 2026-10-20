@@ -115,5 +115,5 @@ pause >nul
 exit /b %CODE%
 
 :check_token
-"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$p='tokens.txt'; if(-not (Test-Path $p)){ exit 2 }; $b=[IO.File]::ReadAllBytes($p); if($b.Length -ge 2 -and (($b[0] -eq 255 -and $b[1] -eq 254) -or ($b[0] -eq 254 -and $b[1] -eq 255))){ exit 1 }; $t=[IO.File]::ReadAllText($p); $ls=@($t -split '\r?\n' | Where-Object { $_.Trim() -ne '' -and -not $_.TrimStart().StartsWith('#') }); if($ls.Count -gt 0){ exit 0 }; exit 2"
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$p='tokens.txt'; if(-not (Test-Path $p)){ exit 2 }; $b=[IO.File]::ReadAllBytes($p); if($b.Length -ge 2 -and (($b[0] -eq 255 -and $b[1] -eq 254) -or ($b[0] -eq 254 -and $b[1] -eq 255))){ exit 1 }; try { $t=[IO.File]::ReadAllText($p) } catch { exit 1 }; $ls=@($t -split '\r?\n' | Where-Object { $_.Trim() -ne '' -and -not $_.TrimStart().StartsWith('#') }); if($ls.Count -gt 0){ exit 0 }; exit 2"
 exit /b %errorlevel%

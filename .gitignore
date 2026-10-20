@@ -2,6 +2,7 @@ node_modules/
 creds.json
 creds.json.tmp
 creds.json.*.tmp
+tokens.txt.tmp
 creds.json.corrupt-*
 *.corrupt-*
 tokens.txt
