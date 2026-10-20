@@ -14,33 +14,34 @@ echo   森空岛签到（明日方舟 / 终末地）
 echo ==========================================
 echo.
 
-where node >nul 2>nul
-if errorlevel 1 (
+set "NODE_EXE="
+if exist "%~dp0node.exe" set "NODE_EXE=%~dp0node.exe"
+if not defined NODE_EXE ( where node >nul 2>nul && set "NODE_EXE=node" )
+if not defined NODE_EXE (
   echo [x] 没有找到 Node.js。
-  echo     请先到 https://nodejs.org/ 下载 LTS 版本安装。
-  echo     装好后再双击本文件。
+  echo     这个压缩包应该自带 node.exe；如果它不见了，请重新下载完整压缩包。
+  echo     也可以到 https://nodejs.org/ 装 LTS 版本后再试。
   echo.
   pause
   exit /b 1
 )
 
 echo Node.js 版本：
-node -v
+"%NODE_EXE%" -v
 if errorlevel 1 (
   echo.
-  echo [x] Node.js 找到了，但运行失败（可能安装损坏或权限问题）。
-  echo     请重装 https://nodejs.org/ 的 LTS 版本后再试。
+  echo [x] Node.js 找到了，但运行失败（可能文件损坏或权限问题）。
+  echo     请重新下载完整压缩包，或到 https://nodejs.org/ 装 LTS 版本。
   pause
   exit /b 1
 )
 set "NMAJOR="
-for /f "tokens=1 delims=." %%a in ('node -v 2^>nul') do set "NMAJOR=%%a"
+for /f "tokens=1 delims=." %%a in ('"%NODE_EXE%" -v 2^>nul') do set "NMAJOR=%%a"
 if not defined NMAJOR goto skipver
 set "NMAJOR=%NMAJOR:v=%"
 if %NMAJOR% LSS 18 (
   echo.
   echo [x] Node.js 版本太低，需要 18 或更高。
-  echo     请到 https://nodejs.org/ 装 LTS 版本后再试。
   pause
   exit /b 1
 )
@@ -78,7 +79,7 @@ if not defined HAS_TOKEN (
 echo [2/2] 开始签到……
 echo.
 chcp 65001 >nul
-node src\cli.js --token-file tokens.txt
+"%NODE_EXE%" src\cli.js --token-file tokens.txt
 set "CODE=%errorlevel%"
 chcp 936 >nul 2>nul
 echo.

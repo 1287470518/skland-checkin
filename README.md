@@ -41,13 +41,13 @@ node src/cli.js --token "<你的 token>"
 成功 1 · 已签 1 · 失败 0（共 2） · 整号失败 0
 ```
 
-### 3. Windows 一键签到（不用命令）
+### 3. Windows 一键签到（不用命令，包自带 Node）
 
-下载 Release 里的 `skland-checkin-0.1.0-windows.zip`，解压后双击 `一键签到.bat`：
+下载**最新 Release** 的 Windows 包（约 30MB，内含 `node.exe`，不用另外装 Node），解压后双击 `一键签到.bat`：
 
 - 第一次会提示你把 token 复制到剪贴板再按任意键，脚本自己写进 `tokens.txt`，窗口不显示 token；
 - 之后每次双击就能签到，结束窗口不会闪退；
-- 没装 Node.js 会提示去 nodejs.org 装 LTS 版本。
+- 想用自己装的 Node 也可以：删掉包里的 `node.exe` 就会用系统的 Node（18+）。
 
 也可以手动用记事本编辑 `tokens.txt`（一行一个 token，或一行一个 `{"name":"账号名","token":"..."}` JSON），再双击。
 
