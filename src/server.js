@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { checkinToken } from './core.js';
 import { CredStore } from './store.js';
 import crypto from 'node:crypto';
-import { safeError } from './errors.js';
+import { safeError, safeCacheError } from './errors.js';
 import { tokenInputError } from './input.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -95,7 +95,12 @@ async function handle(req, res) {
       const store = new CredStore();
       let cred = body.noCache ? null : store.get(token);
       const { cred: used, results } = await checkinToken(token, { cred });
-      if (!cred) store.put(token, used);
+      // ⚠️ 缓存写失败不能把签到结果变成 502（审查 M03）；单独回报 cacheError
+      let cacheError = null;
+      if (!cred) {
+        try { store.put(token, used); }
+        catch { cacheError = safeCacheError(); }
+      }
       return {
         summary: {
           ok: results.filter((r) => r.ok).length,
@@ -105,6 +110,7 @@ async function handle(req, res) {
         },
         // ⚠️ 只挑白名单字段；绝不把 token/cred 回给前端
         results: results.map((r) => ({ appCode: r.appCode, label: r.label, ok: r.ok, already: r.already, message: r.message, awards: r.awards })),
+        ...(cacheError ? { cacheError } : {}),
       };
     })();
     inflight.set(key, task);

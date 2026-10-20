@@ -59,8 +59,18 @@ test('checkinRole：终末地缺默认角色 → 明确报错，不发请求', a
   const f = fakeFetch([]);
   const r = await checkinRole({ uid: 'u1', defaultRole: {} }, 'endfield', 'cred', 'sign', { fetchImpl: f });
   assert.equal(r.ok, false);
-  assert.match(r.message, /默认角色/);
+  assert.match(r.message, /缺少必要角色信息/);
   assert.equal(f.calls.length, 0, '不该发请求');
+});
+
+test('checkinRole：畸形角色字段 → 不发请求（审查 M05）', async () => {
+  const f = fakeFetch([]);
+  const r1 = await checkinRole({ uid: {}, channelMasterId: [] }, 'arknights', 'c', 's', { fetchImpl: f });
+  assert.equal(r1.ok, false);
+  assert.equal(f.calls.length, 0, '方舟畸形角色不该发请求');
+  const r2 = await checkinRole({ uid: 'u', defaultRole: { roleId: {}, serverId: [] } }, 'endfield', 'c', 's', { fetchImpl: f });
+  assert.equal(r2.ok, false);
+  assert.equal(f.calls.length, 0, '终末地畸形角色不该发请求');
 });
 
 test('checkinToken 全流程：grant → cred → 绑定 → 两个角色', async () => {

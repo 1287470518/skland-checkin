@@ -51,34 +51,53 @@ if %NMAJOR% LSS 18 (
 :skipver
 echo.
 
-set "HAS_TOKEN="
-if exist "tokens.txt" (
-  for /f "usebackq eol=# delims=" %%L in ("tokens.txt") do set "HAS_TOKEN=1"
-)
-if not defined HAS_TOKEN (
-  echo [1/2] 还没有配置 token。
-  echo     请先把 token 复制到剪贴板，然后按任意键导入（不会显示内容）。
-  echo     注意：只认一个 token（单行）；导入会覆盖 tokens.txt 现有内容。
-  echo     如果剪贴板里是整段 JSON 或多行，请只复制 data.content 那一串再试。
-  echo     不放心的话，可以用记事本打开 tokens.txt 手动粘贴，保存后再双击。
-  echo.
-  echo     token 获取方法：浏览器登录 https://www.skland.com/ ，然后打开
-  echo     https://web-api.skland.com/account/info/hg
-  echo     复制返回 JSON 里 data.content 那一整串。
-  echo.
-  pause >nul
-  "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { $t=(Get-Clipboard -Raw); if($t){$t=$t.Trim()}; $t=$t -replace '^\uFEFF',''; if(-not $t){ throw 1 }; if($t -match '[\r\n]'){ throw 4 }; if($t -match '[\x00-\x1F\x7F]'){ throw 5 }; if($t.Length -gt 4096){ throw 2 }; [IO.File]::WriteAllText('tokens.txt',$t,(New-Object Text.UTF8Encoding($false))); $f=Get-Item 'tokens.txt'; if(-not $f -or $f.Length -eq 0){ throw 3 }; exit 0 } catch { exit 1 }"
-  if errorlevel 1 (
-    echo [x] 导入失败：剪贴板是空的、有多行或非法字符，或者没有权限写入。
-    echo     可以用记事本打开 tokens.txt，把 token 粘进去，保存后再双击本文件。
-    echo.
-    pause
-    exit /b 1
-  )
-  echo     token 已保存（不会显示内容）。
-  echo.
-)
+call :check_token
+if errorlevel 2 goto need_import
+if errorlevel 1 goto bad_file
+goto have_token
 
+:need_import
+echo [1/2] 还没有配置 token。
+echo     请先把 token 复制到剪贴板，然后按任意键导入（不会显示内容）。
+echo     注意：只认一个 token（单行）；导入会覆盖 tokens.txt 现有内容。
+echo     如果剪贴板里是整段 JSON 或多行，请只复制 data.content 那一串再试。
+echo     不放心的话，可以用记事本打开 tokens.txt 手动粘贴，保存后再双击。
+echo.
+echo     token 获取方法：浏览器登录 https://www.skland.com/ ，然后打开
+echo     https://web-api.skland.com/account/info/hg
+echo     复制返回 JSON 里 data.content 那一整串。
+echo.
+pause >nul
+call :check_token
+if errorlevel 2 goto do_import
+if errorlevel 1 goto bad_file
+echo     检测到 tokens.txt 已有配置，跳过导入。
+echo.
+goto have_token
+
+:do_import
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { $t=(Get-Clipboard -Raw); if($t){$t=$t.Trim()}; $t=$t -replace '^\uFEFF',''; if(-not $t){ throw 1 }; if($t -match '[\r\n]'){ throw 4 }; if($t -match '[\x00-\x1F\x7F]'){ throw 5 }; if($t.Length -gt 4096){ throw 2 }; $tmp='tokens.txt.tmp'; [IO.File]::WriteAllText($tmp,$t,(New-Object Text.UTF8Encoding($false))); Move-Item -Force $tmp 'tokens.txt'; if(-not (Test-Path 'tokens.txt')){ throw 3 }; exit 0 } catch { if(Test-Path 'tokens.txt.tmp'){ Remove-Item -Force 'tokens.txt.tmp' }; exit 1 }"
+if errorlevel 1 goto import_fail
+echo     token 已保存（不会显示内容）。
+echo.
+goto have_token
+
+:bad_file
+echo [x] tokens.txt 里已有内容，但读不出 token（可能是编码或格式问题）。
+echo     请用记事本打开 tokens.txt，只保留 token、另存为 UTF-8，再双击本文件。
+echo     为保护已有内容，这次不会覆盖它。
+echo.
+pause
+exit /b 1
+
+:import_fail
+echo [x] 导入失败：剪贴板是空的、有多行或非法字符，或者没有权限写入。
+echo     可以用记事本打开 tokens.txt，把 token 粘进去，保存后再双击本文件。
+echo.
+pause
+exit /b 1
+
+:have_token
 echo [2/2] 开始签到……
 echo.
 chcp 65001 >nul
@@ -94,3 +113,7 @@ echo.
 echo 窗口会停在这里，按任意键关闭。
 pause >nul
 exit /b %CODE%
+
+:check_token
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$p='tokens.txt'; if(-not (Test-Path $p)){ exit 2 }; $b=[IO.File]::ReadAllBytes($p); if($b.Length -ge 2 -and (($b[0] -eq 255 -and $b[1] -eq 254) -or ($b[0] -eq 254 -and $b[1] -eq 255))){ exit 1 }; $t=[IO.File]::ReadAllText($p); $ls=@($t -split '\r?\n' | Where-Object { $_.Trim() -ne '' -and -not $_.TrimStart().StartsWith('#') }); if($ls.Count -gt 0){ exit 0 }; exit 2"
+exit /b %errorlevel%

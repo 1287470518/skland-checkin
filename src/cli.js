@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { checkinToken } from './core.js';
 import { CredStore } from './store.js';
 import { makeNotifier } from './notify.js';
-import { safeError } from './errors.js';
+import { safeError, safeCacheError } from './errors.js';
 import { tokenInputError } from './input.js';
 
 function parseArgs(argv) {
@@ -100,14 +100,19 @@ const main = async () => {
   const lines = [];
 
   const accountErrors = [];
+  const cacheWarnings = [];
   for (const [accountIndex, acc] of accounts.entries()) {
     const label = acc.name || '账号';
     // 账号级错误隔离：一个号失败不影响后面的号（审查 M05）
     try {
       let cred = a.cache ? store.get(acc.token) : null;
       const { cred: usedCred, results } = await checkinToken(acc.token, { cred });
-      if (!cred) store.put(acc.token, usedCred);
+      // ⚠️ 先保住签到结果，再尝试写缓存；缓存写失败只记警告，不把已经签到的结果丢掉（审查 M03）
       all.push(...results);
+      if (!cred) {
+        try { store.put(acc.token, usedCred); }
+        catch { cacheWarnings.push({ accountIndex, name: label, message: safeCacheError() }); }
+      }
       if (!results.length) lines.push(label + ' → 没有绑定角色');
       for (const r of results) {
         const state = r.ok ? '✅ 签到成功' + (r.awards.length ? '（' + r.awards.join('、') + '）' : '')
@@ -123,7 +128,7 @@ const main = async () => {
 
   const s = summarize(all);
   s.accountErrors = accountErrors.length;
-  const raw = { summary: s, results: all, accountErrors };
+  const raw = { summary: s, results: all, accountErrors, ...(cacheWarnings.length ? { cacheWarnings } : {}) };
   const text = lines.join('\n') + '\n\n成功 ' + s.ok + ' · 已签 ' + s.already + ' · 失败 ' + s.bad + '（共 ' + s.total + '） · 整号失败 ' + accountErrors.length;
   if (a.json) console.log(JSON.stringify(raw, null, 2));
   else console.log(text);

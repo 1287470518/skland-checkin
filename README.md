@@ -47,7 +47,8 @@ node src/cli.js --token "<你的 token>"
 
 - 第一次会提示你把 token 复制到剪贴板再按任意键，脚本自己写进 `tokens.txt`，窗口不显示 token；
 - 之后每次双击就能签到，结束窗口不会闪退；
-- 想用自己装的 Node 也可以：删掉包里的 `node.exe` 就会用系统的 Node（18+）。
+- 想用自己装的 Node 也可以：删掉包里的 `node.exe` 就会用系统的 Node（18+）；
+- 如果 `tokens.txt` 里已经有能用的 token，脚本不会覆盖它；导入失败或文件编码不对会提示并保留原文件。
 
 也可以手动用记事本编辑 `tokens.txt`（一行一个 token，或一行一个 `{"name":"账号名","token":"..."}` JSON），再双击。
 

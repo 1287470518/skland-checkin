@@ -67,6 +67,8 @@ async function requestOnce(url, { body, cred, signToken, method = 'POST', fetchI
 /** 校验一次响应的「可接受性」：HTTP 与业务 code 都要看 */
 const record = (o) => o !== null && typeof o === 'object' && !Array.isArray(o);
 const nonemptyString = (v) => typeof v === 'string' && v.length > 0;
+// 角色 ID 允许非空字符串或安全整数；对象/数组/空值一律不发请求（审查 M05）。
+const idish = (v) => (typeof v === 'string' && v.length > 0) || Number.isSafeInteger(v);
 function assertOk(out, operation, { requireCode = true } = {}) {
   if (!Number.isInteger(out.status) || out.status < 200 || out.status >= 300) throw new CheckinError('HTTP', { operation, status: out.status });
   if (!record(out.json)) throw new CheckinError('STRUCTURE', { operation });
@@ -154,9 +156,10 @@ export async function checkinRole(role, appCode, cred, signToken, opts = {}) {
   let body;
   if (appCode === 'endfield') {
     const dr = role.defaultRole || {};
-    if (!dr.roleId || !dr.serverId) return { ok: false, already: false, code: null, message: '该绑定没有默认角色（缺 roleId/serverId）', awards: [] };
+    if (!idish(role.uid) || !idish(dr.roleId) || !idish(dr.serverId)) return { ok: false, already: false, code: null, message: '该绑定缺少必要角色信息（uid/roleId/serverId）', awards: [] };
     body = { uid: role.uid, gameId: 3, roleId: dr.roleId, serverId: dr.serverId };
   } else {
+    if (!idish(role.uid) || !idish(role.channelMasterId)) return { ok: false, already: false, code: null, message: '该绑定缺少必要角色信息（uid/channelMasterId）', awards: [] };
     body = { uid: role.uid, gameId: role.channelMasterId };
   }
   // ⚠️ 签到不重试（审查 H04）：POST 的响应丢了再重发，可能从「本次成功」变成「已签」

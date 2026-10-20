@@ -20,6 +20,11 @@ export class CheckinError extends Error {
   }
 }
 
+export function safeCacheError() {
+  // 缓存类错误只给固定文案：不暴露路径、编码、原文件内容或上游细节。
+  return '本地缓存错误（不影响签到结果，见 README「凭据缓存」）';
+}
+
 export function safeError(error) {
   if (error instanceof CheckinError) {
     // 不信任可变的 message，重新通过有限字段生成。
