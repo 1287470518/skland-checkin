@@ -58,6 +58,8 @@ async function requestOnce(url, { body, cred, signToken, method = 'POST', fetchI
     signal: AbortSignal.timeout(timeoutMs),
   });
   const text = await res.text();
+  // 响应体上限：异常大的响应直接按结构错误处理，避免占内存（审查 L07）
+  if (text.length > 5 * 1024 * 1024) throw new CheckinError('STRUCTURE', { status: res.status });
   let json;
   try { json = JSON.parse(text); }
   catch { throw new CheckinError('NON_JSON', { status: res.status }); }

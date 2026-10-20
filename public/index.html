@@ -62,16 +62,23 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const KEY = 'skland-checkin.token';
-const saved = localStorage.getItem(KEY);
+// 浏览器禁用存储时（隐私模式/策略）不能让整页不可用：读写都单独兜底（审查 L02）
+const store = {
+  get() { try { return localStorage.getItem(KEY); } catch { return null; } },
+  set(v) { try { localStorage.setItem(KEY, v); } catch { /* 记不住就算了 */ } },
+  del() { try { localStorage.removeItem(KEY); } catch { /* 同上 */ } },
+};
+const saved = store.get();
 if (saved) { $('token').value = saved; $('remember').checked = true; }
 
-$('clear').onclick = () => { $('token').value = ''; localStorage.removeItem(KEY); $('result').style.display = 'none'; $('msg').textContent = ''; };
+$('clear').onclick = () => { $('token').value = ''; store.del(); $('result').style.display = 'none'; $('msg').textContent = ''; };
 
 $('go').onclick = async () => {
   const token = $('token').value.trim();
   $('msg').textContent = '';
+  $('result').style.display = 'none';   // 先清旧结果，别让上一次成功表冒充这次（审查 L01）
   if (!token) { $('msg').textContent = '请先填 token'; return; }
-  if ($('remember').checked) localStorage.setItem(KEY, token); else localStorage.removeItem(KEY);
+  if ($('remember').checked) store.set(token); else store.del();
   $('go').disabled = true; $('go').textContent = '签到中…';
   try {
     const r = await fetch('/api/checkin', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token }) });

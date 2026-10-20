@@ -9,6 +9,7 @@ import { checkinToken } from './core.js';
 import { CredStore } from './store.js';
 import crypto from 'node:crypto';
 import { safeError, safeCacheError } from './errors.js';
+import { acquireLock, BusyError } from './lock.js';
 import { tokenInputError } from './input.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -93,6 +94,8 @@ async function handle(req, res) {
     if (inflight.has(key)) return json(res, 429, { error: '这个账号正在签到，稍等几秒再试' });
     const task = (async () => {
       const store = new CredStore();
+      const release = acquireLock(store.dir);   // 跨进程互斥（审查 M01）
+      try {
       let cred = body.noCache ? null : store.get(token);
       const { cred: used, results } = await checkinToken(token, { cred });
       // ⚠️ 缓存写失败不能把签到结果变成 502（审查 M03）；单独回报 cacheError
@@ -112,12 +115,14 @@ async function handle(req, res) {
         results: results.map((r) => ({ appCode: r.appCode, label: r.label, ok: r.ok, already: r.already, message: r.message, awards: r.awards })),
         ...(cacheError ? { cacheError } : {}),
       };
+      } finally { release(); }
     })();
     inflight.set(key, task);
     try {
       const out = await task;
       return json(res, 200, out);
     } catch (e) {
+      if (e instanceof BusyError) return json(res, 409, { error: '另一个签到实例正在运行，稍后再试' });
       return json(res, 502, { error: safeError(e) });
     } finally {
       inflight.delete(key);

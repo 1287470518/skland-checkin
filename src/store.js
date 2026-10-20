@@ -35,6 +35,17 @@ export class CredStore {
     const okShape = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
       && parsed.accounts && typeof parsed.accounts === 'object' && !Array.isArray(parsed.accounts);
     if (!okShape) throw new Error('凭据缓存结构不对（原文件备份为 ' + this.backupCorrupt() + '），请检查或删除后重试');
+    // ⚠️ 2026-10-21 整体审核 M02：只验根结构不够，version 与每条凭据的字段也要卡。
+    if (parsed.version !== 1) throw new Error('凭据缓存版本不支持（原文件备份为 ' + this.backupCorrupt() + '），请检查或删除后重试');
+    for (const key of Object.keys(parsed.accounts)) {
+      const v = parsed.accounts[key];
+      const okEntry = v && typeof v === 'object' && !Array.isArray(v)
+        && typeof v.cred === 'string' && v.cred.length > 0
+        && typeof v.signToken === 'string' && v.signToken.length > 0
+        && (v.userId === undefined || typeof v.userId === 'string')
+        && (v.at === undefined || (typeof v.at === 'number' && Number.isFinite(v.at)));
+      if (!okEntry) throw new Error('凭据缓存条目结构不对（原文件备份为 ' + this.backupCorrupt() + '），请检查或删除后重试');
+    }
     return parsed;
   }
 

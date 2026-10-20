@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { checkinToken } from './core.js';
 import { CredStore } from './store.js';
 import { makeNotifier } from './notify.js';
+import { acquireLock, BusyError } from './lock.js';
 import { safeError, safeCacheError } from './errors.js';
 import { tokenInputError } from './input.js';
 
@@ -95,6 +96,28 @@ const main = async () => {
   if (accounts.some((acc) => tokenInputError(acc.token))) { console.error('token 输入不合法（须为非空字符串、最多 4096 字符、不含控制字符）'); process.exit(2); }
 
   const store = new CredStore();
+  // 单实例互斥：同一个缓存目录只允许一个签到进程（审查 M01）
+  let release;
+  try { release = acquireLock(store.dir); }
+  catch (e) {
+    console.error('❌ ' + (e instanceof BusyError ? '另一个签到实例正在运行，等它结束再试' : '无法创建运行锁'));
+    process.exit(1);
+  }
+  if (typeof process.on === 'function') process.on('exit', release);
+  // 通知配置在开始签到前校验：配错了就别先签到再报错（审查 L06）
+  const NOTIFY_TYPES = ['none', 'stdout', 'webhook', 'bark', 'serverchan'];
+  if (!NOTIFY_TYPES.includes(a.notify)) {
+    console.error('❌ 未知通知方式：' + a.notify + '（可选：' + NOTIFY_TYPES.join(' / ') + '）');
+    process.exit(2);
+  }
+  if ((a.notify === 'webhook' || a.notify === 'bark') && !a.notifyUrl) {
+    console.error('❌ --notify ' + a.notify + ' 需要 --notify-url');
+    process.exit(2);
+  }
+  if (a.notify === 'serverchan' && !a.notifyKey && !process.env.SERVERCHAN_KEY) {
+    console.error('❌ --notify serverchan 需要 --notify-key 或 SERVERCHAN_KEY');
+    process.exit(2);
+  }
   const notify = makeNotifier(a.notify, { url: a.notifyUrl, key: a.notifyKey, template: a.notifyTemplate });
   const all = [];
   const lines = [];
@@ -108,7 +131,8 @@ const main = async () => {
       let cred = a.cache ? store.get(acc.token) : null;
       const { cred: usedCred, results } = await checkinToken(acc.token, { cred });
       // ⚠️ 先保住签到结果，再尝试写缓存；缓存写失败只记警告，不把已经签到的结果丢掉（审查 M03）
-      all.push(...results);
+      // 每条结果带上账号索引，多账号时 JSON/通知 raw 能反向对应到账号（审查 L05）
+      all.push(...results.map((r) => ({ ...r, accountIndex })));
       if (!cred) {
         try { store.put(acc.token, usedCred); }
         catch { cacheWarnings.push({ accountIndex, name: label, message: safeCacheError() }); }

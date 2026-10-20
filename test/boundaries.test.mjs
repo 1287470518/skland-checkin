@@ -48,6 +48,7 @@ async function sandbox(entry, { checkin = async () => result, tokenFile = '', st
     'node:crypto': { default: crypto },
     './store.js': { CredStore: Store },
     './core.js': { checkinToken: async (token, opts) => { seen.push(token); return checkin(token, opts); } },
+    './lock.js': { acquireLock: () => () => {}, BusyError: class BusyError extends Error {} },
   };
   if (entry === 'cli.js') replacements['./notify.js'] = { makeNotifier: () => async (msg) => { notifications.push(msg); } };
   const cache = new Map();
@@ -237,5 +238,5 @@ test('L01 发布选择和ignore覆盖搜狗残留；H01页面保持textContent',
   assert.deepEqual(pkg.files, ['src', 'public', 'LICENSE']);
   assert.equal(pkg.engines.node, '>=18');
   const html = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
-  assert.equal(crypto.createHash('sha256').update(html).digest('hex'), 'cae169f40f17c47c1793ad7dc8fe72b996e8ba5e830cabe65719218663c48f73');
+  assert.equal(crypto.createHash('sha256').update(html).digest('hex'), 'd214d086f1e220ba82eb3016c3cc3f922d1c5c230765c030cc0504c05b6e0965');
 });

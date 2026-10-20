@@ -371,3 +371,32 @@ test('四审：accounts 是数组（结构不对）要报错，不能静默写�
   fs.writeFileSync(path.join(dir, 'creds.json'), JSON.stringify({ version: 1 }), 'utf8');
   assert.throws(() => store.get('some-token'), /结构不对/);
 });
+
+test('M01：同一缓存目录第二个锁要报 Busy，释放后可再拿', async () => {
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { acquireLock, BusyError } = await import('../src/lock.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skland-lock-'));
+  const release = acquireLock(dir);
+  assert.throws(() => acquireLock(dir), BusyError);
+  release();
+  const release2 = acquireLock(dir);
+  release2();
+});
+
+test('M02：缓存 version 不支持 / 条目字段坏要拒并保留原文件', async () => {
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { CredStore } = await import('../src/store.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skland-schema-'));
+  const f = path.join(dir, 'creds.json');
+  fs.writeFileSync(f, JSON.stringify({ version: 999, accounts: {} }), 'utf8');
+  assert.throws(() => new CredStore({ dir }).get('t'), /版本/);
+  fs.writeFileSync(f, JSON.stringify({ version: 1, accounts: { abc: { cred: {}, signToken: [] } } }), 'utf8');
+  assert.throws(() => new CredStore({ dir }).get('t'), /条目/);
+});
+
+test('M04：grant data.code 缺失或非字符串要拒（补假绿）', async () => {
+  await assert.rejects(grantCode('fake', { retries: 0, fetchImpl: async () => okJson({ data: {}, status: 0 }) }), /grant/);
+  await assert.rejects(grantCode('fake', { retries: 0, fetchImpl: async () => okJson({ data: { code: 123 }, status: 0 }) }), /grant/);
+});
