@@ -2,7 +2,7 @@
 
 森空岛（**明日方舟** / **终末地**）自动签到。纯 Node 命令行，**零依赖**，不需要青龙、不需要 Docker、不需要任何面板。
 
-运行环境：**Node.js >=18**。离线测试：`node --test test/core.test.mjs`。
+运行环境：**Node.js >=18**。离线测试（源码仓库）：`node --test test/core.test.mjs`；Release 的 Windows 包不含 `test/` 目录。
 
 > ⚠️ 非官方工具，调用的是森空岛自己网页在用的接口。账号风险自负，详见文末。
 
