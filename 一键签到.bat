@@ -14,6 +14,9 @@ echo   森空岛签到（明日方舟 / 终末地）
 echo ==========================================
 echo.
 
+set "PS_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if not exist "%PS_EXE%" set "PS_EXE=powershell"
+
 set "NODE_EXE="
 if exist "%~dp0node.exe" set "NODE_EXE=%~dp0node.exe"
 if not defined NODE_EXE ( where node >nul 2>nul && set "NODE_EXE=node" )
@@ -64,7 +67,7 @@ if not defined HAS_TOKEN (
   echo     复制返回 JSON 里 data.content 那一整串。
   echo.
   pause >nul
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { $t=(Get-Clipboard -Raw); if($t){$t=$t.Trim()}; $t=$t -replace '^\uFEFF',''; if(-not $t){ throw 1 }; if($t -match '[\r\n]'){ throw 4 }; if($t -match '[\x00-\x1F\x7F]'){ throw 5 }; if($t.Length -gt 4096){ throw 2 }; [IO.File]::WriteAllText('tokens.txt',$t,(New-Object Text.UTF8Encoding($false))); $f=Get-Item 'tokens.txt'; if(-not $f -or $f.Length -eq 0){ throw 3 }; exit 0 } catch { exit 1 }"
+  "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { $t=(Get-Clipboard -Raw); if($t){$t=$t.Trim()}; $t=$t -replace '^\uFEFF',''; if(-not $t){ throw 1 }; if($t -match '[\r\n]'){ throw 4 }; if($t -match '[\x00-\x1F\x7F]'){ throw 5 }; if($t.Length -gt 4096){ throw 2 }; [IO.File]::WriteAllText('tokens.txt',$t,(New-Object Text.UTF8Encoding($false))); $f=Get-Item 'tokens.txt'; if(-not $f -or $f.Length -eq 0){ throw 3 }; exit 0 } catch { exit 1 }"
   if errorlevel 1 (
     echo [x] 导入失败：剪贴板是空的、有多行或非法字符，或者没有权限写入。
     echo     可以用记事本打开 tokens.txt，把 token 粘进去，保存后再双击本文件。
