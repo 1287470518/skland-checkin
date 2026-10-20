@@ -54,7 +54,8 @@ if exist "tokens.txt" (
 if not defined HAS_TOKEN (
   echo [1/2] 还没有配置 token。
   echo     请先把 token 复制到剪贴板，然后按任意键导入（不会显示内容）。
-  echo     注意：导入会覆盖 tokens.txt 现有内容，且只认一个 token。
+  echo     注意：只认一个 token（单行）；导入会覆盖 tokens.txt 现有内容。
+  echo     如果剪贴板里是整段 JSON 或多行，请只复制 data.content 那一串再试。
   echo     不放心的话，可以用记事本打开 tokens.txt 手动粘贴，保存后再双击。
   echo.
   echo     token 获取方法：浏览器登录 https://www.skland.com/ ，然后打开
@@ -62,9 +63,9 @@ if not defined HAS_TOKEN (
   echo     复制返回 JSON 里 data.content 那一整串。
   echo.
   pause >nul
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { $t=(Get-Clipboard -Raw); if($t){$t=$t.Trim()}; if(-not $t){ throw 1 }; if($t.Length -gt 4096){ throw 2 }; [IO.File]::WriteAllText('tokens.txt',$t,(New-Object Text.UTF8Encoding($false))); $f=Get-Item 'tokens.txt'; if(-not $f -or $f.Length -eq 0){ throw 3 }; exit 0 } catch { exit 1 }"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { $t=(Get-Clipboard -Raw); if($t){$t=$t.Trim()}; $t=$t -replace '^\uFEFF',''; if(-not $t){ throw 1 }; if($t -match '[\r\n]'){ throw 4 }; if($t -match '[\x00-\x1F\x7F]'){ throw 5 }; if($t.Length -gt 4096){ throw 2 }; [IO.File]::WriteAllText('tokens.txt',$t,(New-Object Text.UTF8Encoding($false))); $f=Get-Item 'tokens.txt'; if(-not $f -or $f.Length -eq 0){ throw 3 }; exit 0 } catch { exit 1 }"
   if errorlevel 1 (
-    echo [x] 导入失败：剪贴板是空的、内容不合法，或者没有权限写入。
+    echo [x] 导入失败：剪贴板是空的、有多行或非法字符，或者没有权限写入。
     echo     可以用记事本打开 tokens.txt，把 token 粘进去，保存后再双击本文件。
     echo.
     pause
