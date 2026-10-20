@@ -1,0 +1,27 @@
+{
+  "name": "skland-checkin",
+  "version": "0.1.0",
+  "description": "森空岛（明日方舟 / 终末地）自动签到 —— 纯 Node 命令行，零依赖",
+  "type": "module",
+  "bin": {
+    "skland-checkin": "./src/cli.js"
+  },
+  "files": [
+    "src",
+    "public",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "skland",
+    "endfield",
+    "arknights",
+    "checkin",
+    "森空岛",
+    "终末地",
+    "明日方舟"
+  ],
+  "license": "MIT"
+}

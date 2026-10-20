@@ -1,0 +1,17 @@
+node_modules/
+creds.json
+creds.json.tmp
+creds.json.*.tmp
+creds.json.corrupt-*
+*.corrupt-*
+tokens.txt
+*.local.*
+.env
+*.bak
+
+# 意外混进来的东西（不是本项目的，2026-10-21 审查发现）
+%SystemDrive%/
+ProgramData/
+*.bin
+**/sgim_picface_cloud.bin
+**/sgim_picface_cloud_bak.bin

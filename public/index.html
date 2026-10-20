@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>森空岛签到</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f7f9; --fg:#1b1f24; --muted:#6b7280; --line:#e5e7eb; --ok:#0a7d33; --warn:#9a6700; --err:#b42318; --accent:#2563eb; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e6e8eb; --muted:#9aa4b2; --line:#252a33; --ok:#3fb950; --warn:#d29922; --err:#f85149; --accent:#58a6ff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: color-mix(in srgb, var(--fg) 3%, transparent); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  input[type=password] { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:transparent; color:var(--fg); font-size:14px; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+  button { padding:9px 16px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:#fff; font-size:14px; cursor:pointer; }
+  button:disabled { opacity:.55; cursor:default; }
+  button.ghost { background:transparent; color:var(--fg); border-color:var(--line); }
+  .hint { font-size:12.5px; color:var(--muted); margin-top:10px; }
+  .hint code { background: color-mix(in srgb, var(--fg) 8%, transparent); padding:1px 5px; border-radius:4px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th,td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:500; font-size:12.5px; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .err { color:var(--err); }
+  .summary { font-size:13px; color:var(--muted); margin-top:10px; }
+  .err-box { color:var(--err); font-size:13.5px; margin-top:10px; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>森空岛签到</h1>
+  <div class="sub">明日方舟 / 终末地 · 本地运行，token 只留在你自己的机器上</div>
+
+  <div class="card">
+    <label for="token">token（不是 cookie）</label>
+    <input id="token" type="password" placeholder="粘贴 data.content 里那串" autocomplete="off" spellcheck="false">
+    <div class="row">
+      <button id="go">签到</button>
+      <button id="clear" class="ghost">清空</button>
+      <label style="margin:0;display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)">
+        <input id="remember" type="checkbox"> 记住（存浏览器本地）
+      </label>
+    </div>
+    <div class="hint">
+      怎么拿：浏览器登录 <code>skland.com</code> → 打开 <code>web-api.skland.com/account/info/hg</code> → 复制 <code>data.content</code> 那一串。
+      <br>这串等同账号密码，别发给别人、别截图外传。
+    </div>
+    <div id="msg" class="err-box"></div>
+  </div>
+
+  <div id="result" class="card" style="display:none">
+    <table>
+      <thead><tr><th>游戏</th><th>角色</th><th>结果</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="summary" class="summary"></div>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const KEY = 'skland-checkin.token';
+const saved = localStorage.getItem(KEY);
+if (saved) { $('token').value = saved; $('remember').checked = true; }
+
+$('clear').onclick = () => { $('token').value = ''; localStorage.removeItem(KEY); $('result').style.display = 'none'; $('msg').textContent = ''; };
+
+$('go').onclick = async () => {
+  const token = $('token').value.trim();
+  $('msg').textContent = '';
+  if (!token) { $('msg').textContent = '请先填 token'; return; }
+  if ($('remember').checked) localStorage.setItem(KEY, token); else localStorage.removeItem(KEY);
+  $('go').disabled = true; $('go').textContent = '签到中…';
+  try {
+    const r = await fetch('/api/checkin', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    // ⚠️ 一律用 createTextNode / textContent：角色名、奖励名、错误信息都来自接口，
+    //    拼 innerHTML 会被当成标记执行（读了 localStorage 里的 token 就能外发）
+    const tbody = $('rows');
+    tbody.textContent = '';
+    for (const x of j.results) {
+      const cls = x.ok ? 'ok' : x.already ? 'warn' : 'err';
+      const text = x.ok ? '✅ 签到成功' + (x.awards.length ? '（' + x.awards.join('、') + '）' : '')
+                 : x.already ? '已经签过' : '⚠️ ' + (x.message || '失败');
+      const game = x.appCode === 'endfield' ? '终末地' : x.appCode === 'arknights' ? '明日方舟' : x.appCode;
+      const tr = document.createElement('tr');
+      for (const [value, className] of [[game, ''], [x.label, ''], [text, cls]]) {
+        const td = document.createElement('td');
+        if (className) td.className = className;
+        td.textContent = String(value);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    $('summary').textContent = '成功 ' + j.summary.ok + ' · 已签 ' + j.summary.already + ' · 失败 ' + j.summary.bad + '（共 ' + j.summary.total + '）';
+    $('result').style.display = '';
+  } catch (e) {
+    $('msg').textContent = String(e.message || e);
+  } finally {
+    $('go').disabled = false; $('go').textContent = '签到';
+  }
+};
+</script>
+</body>
+</html>
