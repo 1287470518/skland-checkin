@@ -46,6 +46,7 @@ async function sandbox(entry, { checkin = async () => result, tokenFile = '', st
     'node:path': { default: path },
     'node:url': { fileURLToPath },
     'node:crypto': { default: crypto },
+    'node:child_process': { execFileSync: () => { throw new Error('测试中禁止执行外部命令'); } },
     './store.js': { CredStore: Store },
     './core.js': { checkinToken: async (token, opts) => { seen.push(token); return checkin(token, opts); } },
     './lock.js': { acquireLock: () => () => {}, BusyError: class BusyError extends Error {} },

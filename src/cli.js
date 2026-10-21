@@ -2,6 +2,9 @@
 // skland-checkin CLI —— 森空岛（明日方舟 / 终末地）自动签到
 // 零依赖，Node 18+
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { checkinToken } from './core.js';
 import { CredStore } from './store.js';
 import { makeNotifier } from './notify.js';
@@ -28,6 +31,11 @@ function parseArgs(argv) {
     else if (k === '--notify-template') a.notifyTemplate = next();
     else if (k === '--no-cache') a.cache = false;
     else if (k === '--json') a.json = true;
+    else if (k === '--install-task') {
+      // 可选带一个时间参数；不带就默认 08:00
+      a.installTask = (argv[i + 1] && !/^--?/.test(argv[i + 1])) ? argv[++i] : '08:00';
+    }
+    else if (k === '--uninstall-task') a.uninstallTask = true;
     else if (k === '--help' || k === '-h') a.help = true;
     else if (k === '--version' || k === '-v') a.version = true;
     else if (!a.unknown) a.unknown = true;
@@ -52,6 +60,8 @@ function usage() {
     '  --notify-url <url>  webhook / bark 的目标地址',
     '  --notify-key <key>  serverchan 的 SendKey（也可设 SERVERCHAN_KEY）',
     '  --notify-template <text>  webhook 改发 {text}',
+    '  --install-task [HH:MM]  设置 Windows 每天自动签到（默认 08:00）',
+    '  --uninstall-task        取消每天自动签到',
     '  --help / --version 帮助 / 版本',
     '退出码：0=角色成功/已签或没有绑定角色；1=账号/角色失败；2=参数或输入格式错误',
     'Node.js >=18；token 不限制 Base64/JWT 形状，仅校验类型、长度和控制字符',
@@ -59,6 +69,34 @@ function usage() {
     'token 怎么拿：浏览器登录 https://www.skland.com/ → 打开 https://web-api.skland.com/account/info/hg',
     '              复制返回里 data.content 那一串（这是登录凭证，别外传）',
   ].join('\n'));
+}
+
+const TASK_NAME = 'SklandCheckin';
+
+/** 设置 Windows 任务计划：每天固定时间跑一次签到（审查：自动签到的缺口）。 */
+function setupDailyTask(time) {
+  if (process.platform !== 'win32') { console.error('这个参数只支持 Windows；Linux/macOS 请用 cron'); process.exit(2); }
+  if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(time)) { console.error('时间格式不对，例如 08:00'); process.exit(2); }
+  const node = process.execPath;
+  const cli = fileURLToPath(import.meta.url);
+  const tokens = path.resolve('tokens.txt');
+  const tr = '"' + node + '" "' + cli + '" --token-file "' + tokens + '"';
+  try {
+    execFileSync('schtasks', ['/create', '/f', '/tn', TASK_NAME, '/tr', tr, '/sc', 'daily', '/st', time], { stdio: 'inherit' });
+  } catch {
+    console.error('创建任务失败：请右键「设置每天自动签到.bat」，选「以管理员身份运行」再试。');
+    process.exit(1);
+  }
+  console.log('已设置：每天 ' + time + ' 自动签到（电脑开机且这个用户已登录时运行）。取消：--uninstall-task');
+  process.exit(0);
+}
+
+function removeDailyTask() {
+  if (process.platform !== 'win32') { console.error('这个参数只支持 Windows'); process.exit(2); }
+  try { execFileSync('schtasks', ['/delete', '/f', '/tn', TASK_NAME], { stdio: 'inherit' }); }
+  catch { console.error('没有找到自动签到任务（或删除失败）。'); process.exit(1); }
+  console.log('已取消每天自动签到。');
+  process.exit(0);
 }
 
 function readTokenFile(p) {
@@ -85,6 +123,8 @@ const main = async () => {
   if (a.help) return usage();
   if (a.version) return console.log(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
   if (a.unknown) { console.error('不认识的参数（--help 看用法）'); process.exit(2); }
+  if (a.installTask) return setupDailyTask(a.installTask);
+  if (a.uninstallTask) return removeDailyTask();
 
   const accounts = [];
   if (a.token) accounts.push({ name: '', token: a.token });
