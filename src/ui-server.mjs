@@ -79,6 +79,7 @@ const accountsView = () => readTokens().map((a) => {
   return {
     key: keyOf(a.token),
     nickname: s.nickname || a.name || '',
+    characters: s.characters || [],
     signedToday: state.signedToday(a.token),
     lastSuccess: s.lastSuccess || null,
     lastAttempt: s.lastAttempt || null,
@@ -149,13 +150,21 @@ async function refresh() {
   for (const a of j.accounts) {
     const row = document.createElement('div'); row.className = 'row';
     const name = document.createElement('div'); name.className = 'name';
-    name.textContent = a.nickname || ('账号 ' + a.key.slice(0, 6));
+    const title = document.createElement('div'); title.textContent = a.nickname || ('账号 ' + a.key.slice(0, 6));
+    name.appendChild(title);
+    if (a.characters && a.characters.length) {
+      const sub = document.createElement('div'); sub.className = 'muted';
+      sub.textContent = a.characters.map((c) => (c.appCode === 'endfield' ? '终末地' : '明日方舟') + '：' + c.label).join('  ·  ');
+      name.appendChild(sub);
+    }
     const st = document.createElement('div');
     st.className = a.signedToday ? 'ok' : 'muted';
     st.textContent = a.signedToday ? '今天已签' : (a.lastError ? '上次失败' : '今天未签');
+    const ref = document.createElement('button'); ref.className = 'ghost'; ref.textContent = '刷新角色';
+    ref.onclick = async () => { try { await api('POST', '/api/account/' + a.key + '/refresh'); refresh(); } catch (e) { msg(String(e.message || e), true); } };
     const del = document.createElement('button'); del.className = 'ghost'; del.textContent = '删除';
     del.onclick = async () => { if (!confirm('删除这个账号？')) return; await api('DELETE', '/api/account/' + a.key); refresh(); };
-    row.append(name, st, del); list.appendChild(row);
+    row.append(name, st, ref, del); list.appendChild(row);
   }
 }
 function msg(t, err) { $('msg').textContent = t || ''; $('msg').className = 'msg' + (err ? ' err' : ''); }
@@ -193,16 +202,36 @@ const server = http.createServer(async (req, res) => {
       finally { await session.close(); }
       const cred = await login(token);
       const apps = await getBindings(cred.cred, cred.signToken);
-      const names = apps.flatMap((a) => a.bindingList.map((b) => b.nickName || b.uid).filter(Boolean));
-      const nickname = names[0] || '';
+      // 一个账号可能绑多个游戏（明日方舟/终末地），每个绑定角色都记下来（审查：游戏 ID 要分在账号下面）
+      const characters = apps.flatMap((a) => (a.bindingList || []).map((b) => ({
+        appCode: a.appCode,
+        label: (a.appCode === 'endfield' ? ((b.defaultRole || {}).nickname) : b.nickName) || b.uid || '',
+      }))).filter((c) => c.label);
+      const nickname = characters[0] ? characters[0].label : '';
       appendToken(token);
-      state.set(token, { nickname, userId: cred.userId || '', addedAt: new Date().toISOString() });
+      state.set(token, { nickname, characters, userId: cred.userId || '', addedAt: new Date().toISOString() });
       const store = new CredStore();
       try { store.put(token, cred); } catch { /* 缓存失败不影响绑定 */ }
       let warning = null;
       try { installDailyTask({ cliPath: path.join(ROOT, 'src', 'daily.mjs'), tokensPath: TOKENS }); }
       catch (e) { warning = '自动签到任务没装上（' + safeError(e) + '），可以稍后手动双击「设置每天自动签到.bat」'; }
       return json(res, 200, { ok: true, nickname, warning });
+    }
+    if (req.method === 'POST' && /^\/api\/account\/[^/]+\/refresh$/.test(req.url)) {
+      const key = decodeURIComponent(req.url.split('/')[3]);
+      const hit = readTokens().find((a) => keyOf(a.token) === key);
+      if (!hit) return json(res, 404, { error: '没有这个账号' });
+      const store = new CredStore();
+      const cred = store.get(hit.token);
+      const c = cred || await login(hit.token);
+      const apps = await getBindings(c.cred, c.signToken);
+      const characters = apps.flatMap((a) => (a.bindingList || []).map((b) => ({
+        appCode: a.appCode,
+        label: (a.appCode === 'endfield' ? ((b.defaultRole || {}).nickname) : b.nickName) || b.uid || '',
+      }))).filter((x) => x.label);
+      if (!cred) { try { store.put(hit.token, c); } catch { /* 缓存失败不影响 */ } }
+      state.set(hit.token, { nickname: characters[0] ? characters[0].label : '', characters });
+      return json(res, 200, { ok: true, characters });
     }
     if (req.method === 'DELETE' && req.url.startsWith('/api/account/')) {
       const key = decodeURIComponent(req.url.slice('/api/account/'.length));

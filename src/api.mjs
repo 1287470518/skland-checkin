@@ -16,7 +16,7 @@ export function listAccounts() {
   return lines.map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
     .map((l) => { try { const o = JSON.parse(l); return typeof o.token === 'string' ? { name: o.name || '', token: o.token } : null; } catch { return { name: '', token: l }; } })
     .filter((x) => x && x.token)
-    .map((a) => ({ key: keyOf(a.token), name: a.name, state: new State().get(a.token) }));
+    .map((a) => ({ key: keyOf(a.token), name: a.name, token: a.token, state: new State().get(a.token) }));
 }
 
 /** 签到一个 token；返回 { key, ok, results } 或 { key, error } */
