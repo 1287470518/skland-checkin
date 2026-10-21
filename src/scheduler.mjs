@@ -22,3 +22,25 @@ export function removeDailyTask(cliPath) {
   execFileSync('schtasks', ['/delete', '/f', '/tn', task], { stdio: 'ignore' });
   return task;
 }
+
+/** 开机（登录时）自启：静默跑一次 daily，不弹窗口。 */
+export function installBootTask({ cliPath, tokensPath }) {
+  if (process.platform !== 'win32') throw new Error('只支持 Windows');
+  const task = taskNameFor(path.dirname(path.dirname(cliPath))) + '_boot';
+  const tr = '"' + process.execPath + '" "' + cliPath + '" --token-file "' + tokensPath + '"';
+  execFileSync('schtasks', ['/create', '/f', '/tn', task, '/tr', tr, '/sc', 'onlogon'], { stdio: 'ignore' });
+  return task;
+}
+
+export function removeBootTask(cliPath) {
+  if (process.platform !== 'win32') throw new Error('只支持 Windows');
+  const task = taskNameFor(path.dirname(path.dirname(cliPath))) + '_boot';
+  execFileSync('schtasks', ['/delete', '/f', '/tn', task], { stdio: 'ignore' });
+  return task;
+}
+
+export function bootTaskInstalled(cliPath) {
+  if (process.platform !== 'win32') return false;
+  const task = taskNameFor(path.dirname(path.dirname(cliPath))) + '_boot';
+  try { execFileSync('schtasks', ['/query', '/tn', task], { stdio: 'ignore' }); return true; } catch { return false; }
+}

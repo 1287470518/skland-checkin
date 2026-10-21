@@ -10,7 +10,7 @@ import { acquireLock } from './lock.js';
 import { BrowserSession, readToken, findBrowser } from './browser.mjs';
 import { spawn } from 'node:child_process';
 import { safeError } from './errors.js';
-import { installDailyTask, removeDailyTask, taskNameFor } from './scheduler.mjs';
+import { installDailyTask, removeDailyTask, taskNameFor, installBootTask, removeBootTask, bootTaskInstalled } from './scheduler.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PORT = Number(process.env.SKLAND_UI_PORT || 8977);
@@ -18,6 +18,15 @@ const HOST = '127.0.0.1';
 const TOKENS = path.join(ROOT, 'tokens.txt');
 const state = new State();
 const session = new BrowserSession(path.join(state.dir, 'browser-profile'));
+
+function readBody(req, limit = 8192) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on('data', (c) => { size += c.length; if (size > limit) { reject(new Error('请求体太大')); return; } chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
 
 const hostOk = (req) => {
   const m = /^(127\.0\.0\.1|localhost):(\d+)$/.exec(String(req.headers.host || ''));
@@ -124,14 +133,16 @@ button.ghost{background:#1e293b;color:#cbd5e1}button:disabled{opacity:.5;cursor:
   <button id="token">② 获取 token 并绑定</button>
   <button class="ghost" id="checkin">立即签到</button>
 </div>
+<label class="auto"><input type="checkbox" id="auto"> 开机自启（登录时静默签到一次）</label>
 <div class="list" id="list"></div>
 <div class="msg" id="msg"></div>
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
-const api = async (method, url) => { const r = await fetch(url, { method, headers: { 'X-Skland-Checkin': '1' } }); const j = await r.json(); if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j; };
+const api = async (method, url, body) => { const r = await fetch(url, { method, headers: { 'X-Skland-Checkin': '1', ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body } : {}) }); const j = await r.json(); if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j; };
 async function refresh() {
   const j = await api('GET', '/api/status');
+  $('auto').checked = !!j.autostart;
   const list = $('list');
   list.textContent = '';
   if (!j.accounts.length) { const d = document.createElement('div'); d.className = 'row muted'; d.textContent = '还没有绑定账号。点上面两个按钮。'; list.appendChild(d); return; }
@@ -151,6 +162,10 @@ function msg(t, err) { $('msg').textContent = t || ''; $('msg').className = 'msg
 async function run(btn, fn) { btn.disabled = true; try { await fn(); } catch (e) { msg(String(e.message || e), true); } finally { btn.disabled = false; } }
 $('login').onclick = () => run($('login'), async () => { msg('正在打开登录页，登录完再点第 ② 个按钮…'); await api('POST', '/api/login'); msg('登录页已打开，登录完成后点「获取 token 并绑定」'); refresh(); });
 $('token').onclick = () => run($('token'), async () => { msg('正在读取 token…'); const j = await api('POST', '/api/token'); msg('已绑定 ' + (j.nickname || '账号') + (j.warning ? '（' + j.warning + '）' : '')); refresh(); });
+$('auto').onchange = async () => {
+  try { await api('POST', '/api/autostart', JSON.stringify({ enabled: $('auto').checked })); msg($('auto').checked ? '已开启开机自启' : '已关闭开机自启'); }
+  catch (e) { msg(String(e.message || e), true); }
+};
 $('checkin').onclick = () => run($('checkin'), async () => { msg('正在签到…'); const j = await api('POST', '/api/checkin'); msg('签到完成：' + JSON.stringify(j.results)); refresh(); });
 refresh();
 </script></body></html>`;
@@ -164,7 +179,8 @@ const server = http.createServer(async (req, res) => {
       return res.end(HTML);
     }
     if (req.method === 'GET' && req.url === '/api/status') {
-      return json(res, 200, { accounts: accountsView(), task: taskNameFor(ROOT) });
+      const daily = path.join(ROOT, 'src', 'daily.mjs');
+      return json(res, 200, { accounts: accountsView(), task: taskNameFor(ROOT), autostart: bootTaskInstalled(daily) });
     }
     if (req.method === 'POST' && req.url === '/api/login') {
       await session.ensure();
@@ -193,6 +209,13 @@ const server = http.createServer(async (req, res) => {
       const hit = readTokens().find((a) => keyOf(a.token) === key);
       if (hit) removeToken(hit.token);
       return json(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && req.url === '/api/autostart') {
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const daily = path.join(ROOT, 'src', 'daily.mjs');
+      if (body.enabled) installBootTask({ cliPath: daily, tokensPath: TOKENS });
+      else removeBootTask(daily);
+      return json(res, 200, { ok: true, autostart: bootTaskInstalled(daily) });
     }
     if (req.method === 'POST' && req.url === '/api/checkin') {
       const results = await doCheckinAll();

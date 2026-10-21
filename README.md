@@ -142,6 +142,18 @@ for (const app of apps) for (const role of app.bindingList)
   console.log(await checkinRole(role, app.appCode, cred, signToken));
 ```
 
+### 给别的程序 / 机器人用
+
+`src/api.mjs` 导出签到接口，不启动界面、不打印结果，适合给 QQ 机器人或定时脚本调用：
+
+```js
+import { listAccounts, checkinOne, checkinAll } from './src/api.mjs';
+
+const accounts = listAccounts();     // [{ key, name, state }]
+const all = await checkinAll();      // 逐账号签到；今天已签的自动跳过（force: true 可强制）
+const one = await checkinOne(token); // 单账号
+```
+
 网络操作 `grantCode / exchangeCred / login / getBindings / checkinRole / checkinToken` 接受 `{ fetchImpl }`；不传时使用真实 fetch。`pyJson / signHeaders` 是本地序列化和签名工具。
 
 core 不按编码形状拒绝 token；输入提示属于 CLI/UI。`pyJson` 保留 JSON 字符串的语义值，只在结构冒号后加空格；签名和发送使用同一字符串。兑换和签到强制不重试，即使调用方传入 `retries`；grant 和绑定默认对网络瞬时错误、429/5xx 最多重试两次。兑换或签到遇到网络错误时结果可能未知，应人工确认，避免自动重跑。

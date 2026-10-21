@@ -70,6 +70,8 @@ export class BrowserSession {
       '--remote-debugging-port=' + this.port,
       '--user-data-dir=' + this.profileDir,
       '--no-first-run', '--no-default-browser-check',
+      '--disable-features=BlockThirdPartyCookies,ThirdPartyStoragePartitioning',
+      '--disable-blink-features=AutomationControlled',
       '--window-size=1000,760',
       'about:blank',
     ], { detached: true, stdio: 'ignore' });
