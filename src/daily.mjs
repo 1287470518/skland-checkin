@@ -6,6 +6,7 @@ import { checkinToken } from './core.js';
 import { CredStore } from './store.js';
 import { State } from './state.mjs';
 import { safeError } from './errors.js';
+import { acquireLock } from './lock.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const argFile = process.argv.indexOf('--token-file');
@@ -34,6 +35,8 @@ async function once(a, store) {
 const list = readTokens();
 if (!list.length) { console.log('没有账号，跳过'); process.exit(0); }
 const store = new CredStore();
+const release = await acquireLock(store.dir);
+process.on('exit', release);
 const failed = [];
 for (const a of list) {
   if (state.signedToday(a.token)) { console.log('今天已签，跳过：' + (state.get(a.token) || {}).nickname || ''); continue; }

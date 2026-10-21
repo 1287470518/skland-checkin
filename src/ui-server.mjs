@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { checkinToken, getBindings, login } from './core.js';
 import { CredStore } from './store.js';
 import { State, keyOf } from './state.mjs';
+import { acquireLock } from './lock.js';
 import { BrowserSession, readToken, findBrowser } from './browser.mjs';
 import { spawn } from 'node:child_process';
 import { safeError } from './errors.js';
@@ -18,6 +19,13 @@ const TOKENS = path.join(ROOT, 'tokens.txt');
 const state = new State();
 const session = new BrowserSession(path.join(state.dir, 'browser-profile'), { port: 9339 });
 
+const hostOk = (req) => /^(127\.0\.0\.1|localhost):\d+$/.test(String(req.headers.host || ''));
+const originOk = (req) => {
+  const o = req.headers.origin;
+  if (o) return o === 'http://127.0.0.1:' + port || o === 'http://localhost:' + port;
+  return req.headers['x-skland-checkin'] === '1';
+};
+
 const json = (res, status, obj) => {
   const b = Buffer.from(JSON.stringify(obj), 'utf8');
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': b.length, 'Cache-Control': 'no-store' });
@@ -29,7 +37,10 @@ function readTokens() {
     return fs.readFileSync(TOKENS, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
       .map((l) => { try { const o = JSON.parse(l); return typeof o.token === 'string' ? { name: o.name || '', token: o.token } : null; } catch { return { name: '', token: l }; } })
       .filter((x) => x && x.token);
-  } catch { return []; }
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    throw new Error('tokens.txt 读不出来（' + (e.code || 'unknown') + '）');
+  }
 }
 function writeTokens(list) {
   const lines = ['# 一行一个 token（不要提交到 git）', ...list.map((a) => a.token)];
@@ -59,7 +70,9 @@ const accountsView = () => readTokens().map((a) => {
 async function doCheckinAll() {
   const list = readTokens();
   const store = new CredStore();
+  const release = await acquireLock(store.dir);
   const results = [];
+  try {
   for (const a of list) {
     if (state.signedToday(a.token)) { results.push({ key: keyOf(a.token), skipped: true }); continue; }
     try {
@@ -76,6 +89,7 @@ async function doCheckinAll() {
     }
   }
   return results;
+  } finally { release(); }
 }
 
 const HTML = String.raw`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
@@ -133,6 +147,8 @@ refresh();
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (!hostOk(req)) return json(res, 403, { error: '只接受本机访问' });
+    if (req.method !== 'GET' && !originOk(req)) return json(res, 403, { error: '跨站请求被拒绝' });
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(HTML);
@@ -146,8 +162,9 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && req.url === '/api/token') {
-      const token = await readToken(session);
-      await session.close();
+      let token;
+      try { token = await readToken(session); }
+      finally { await session.close(); }
       const cred = await login(token);
       const apps = await getBindings(cred.cred, cred.signToken);
       const names = apps.flatMap((a) => a.bindingList.map((b) => b.nickName || b.uid).filter(Boolean));
@@ -156,8 +173,10 @@ const server = http.createServer(async (req, res) => {
       state.set(token, { nickname, userId: cred.userId || '', addedAt: new Date().toISOString() });
       const store = new CredStore();
       try { store.put(token, cred); } catch { /* 缓存失败不影响绑定 */ }
-      try { installDailyTask({ cliPath: path.join(ROOT, 'src', 'daily.mjs'), tokensPath: TOKENS }); } catch { /* 任务失败不挡绑定 */ }
-      return json(res, 200, { ok: true, nickname });
+      let warning = null;
+      try { installDailyTask({ cliPath: path.join(ROOT, 'src', 'daily.mjs'), tokensPath: TOKENS }); }
+      catch (e) { warning = '自动签到任务没装上（' + safeError(e) + '），可以稍后手动双击「设置每天自动签到.bat」'; }
+      return json(res, 200, { ok: true, nickname, warning });
     }
     if (req.method === 'DELETE' && req.url.startsWith('/api/account/')) {
       const key = decodeURIComponent(req.url.slice('/api/account/'.length));
@@ -176,21 +195,22 @@ const server = http.createServer(async (req, res) => {
 });
 
 let port = PORT;
-let tries = 0;
-function listen() {
+function start() {
+  server.once('error', onError);
   server.listen(port, HOST, () => {
+    server.removeListener('error', onError);
     console.log('签到助手已启动：http://' + HOST + ':' + port);
     openAppWindow(port);
     // 启动时检查今天有没有签过：没签就签一次（不是补签，就是今天还没签）
     doCheckinAll().catch(() => {});
   });
 }
-server.on('error', (e) => {
-  if (e && e.code === 'EADDRINUSE' && tries < 8) { tries++; port++; listen(); return; }
+function onError(e) {
+  if (e && e.code === 'EADDRINUSE' && port < PORT + 8) { port++; start(); return; }
   console.error('启动失败：' + e.message);
   process.exit(1);
-});
-listen();
+}
+start();
 
 function openAppWindow(p) {
   try {

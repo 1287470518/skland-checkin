@@ -1,5 +1,4 @@
 // 独立浏览器会话：启动 Edge/Chrome（独立 profile + 调试端口），用 CDP 读页面。
-// 用途：用户点「登录」→ 打开森空岛；点「获取 token」→ 打开 token 接口页、读出 data.content、立即关窗口。
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,10 +7,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const CANDIDATES = [
   path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+  'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
+  'C:\Program Files\Google\Chrome\Application\chrome.exe',
+  'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
 ];
 
 export function findBrowser() {
@@ -50,14 +49,18 @@ class CDP {
 }
 
 export class BrowserSession {
-  constructor(profileDir, { port = 9339 } = {}) {
+  constructor(profileDir, { port } = {}) {
     this.profileDir = profileDir;
-    this.port = port;
+    this.port = port || (9339 + (process.pid % 100));
     this.proc = null;
   }
-
   async ensure() {
     if (this.proc) return;
+    // 端口被占（可能是别的调试浏览器）就换一个，避免连到别人的会话
+    for (let i = 0; i < 10; i++) {
+      try { await fetch('http://127.0.0.1:' + this.port + '/json/version'); this.port++; }
+      catch { break; }
+    }
     const exe = findBrowser();
     if (!exe) throw new Error('没有找到 Edge 或 Chrome');
     fs.mkdirSync(this.profileDir, { recursive: true });
@@ -68,6 +71,7 @@ export class BrowserSession {
       '--window-size=1000,760',
       'about:blank',
     ], { detached: true, stdio: 'ignore' });
+    this.proc.on('error', () => { this.proc = null; });
     this.proc.unref();
     for (let i = 0; i < 40; i++) {
       await sleep(250);
@@ -75,13 +79,11 @@ export class BrowserSession {
     }
     throw new Error('浏览器启动超时');
   }
-
   async page() {
     const r = await fetch('http://127.0.0.1:' + this.port + '/json/list');
     const list = await r.json();
     return list.find((t) => t.type === 'page');
   }
-
   async navigate(url) {
     await this.ensure();
     const t = await this.page();
@@ -101,28 +103,28 @@ export class BrowserSession {
       return String(r.result.value || '');
     } finally { c.close(); }
   }
-
   async close() {
     const pid = this.proc && this.proc.pid;
     this.proc = null;
     if (!pid) return;
-    await new Promise((resolve) => {
+    const code = await new Promise((resolve) => {
       try {
         const k = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
-        k.on('exit', () => resolve());
-        k.on('error', () => resolve());
-      } catch { resolve(); }
+        k.on('exit', (c) => resolve(c));
+        k.on('error', () => resolve(-1));
+      } catch { resolve(-1); }
     });
+    return code;
   }
 }
 
-/** 打开 token 接口页，读出 data.content（未登录会抛错）。 */
+/** 打开 token 接口页，读出 data.content；失败也会关窗口（由调用方保证）。 */
 export async function readToken(session) {
   const body = await session.navigate('https://web-api.skland.com/account/info/hg');
   let json;
   try { json = JSON.parse(body); } catch { throw new Error('token 页返回的不是 JSON（可能被拦截或页面结构变了）'); }
   if (!json || !json.data || typeof json.data.content !== 'string' || !json.data.content) {
-    throw new Error('还没有登录（' + (json && (json.message || json.msg) || '未拿到 token') + '）');
+    throw new Error('还没有登录（' + ((json && (json.message || json.msg)) || '未拿到 token') + '）');
   }
   return json.data.content;
 }
