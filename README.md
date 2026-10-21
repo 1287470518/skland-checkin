@@ -41,7 +41,21 @@ node src/cli.js --token "<你的 token>"
 成功 1 · 已签 1 · 失败 0（共 2） · 整号失败 0
 ```
 
-### 3. Windows 一键签到（不用命令，包自带 Node）
+### 3. 双击打开签到助手（推荐）
+
+解压后双击 `签到助手.bat`，会打开一个小窗口：
+
+1. 点「登录森空岛」，在弹出的浏览器窗口里登录（用你自己的森空岛账号）
+2. 回到助手点「获取 token 并绑定」——助手会自己打开 token 接口页、读出 token、拿到游戏 ID，然后立即关掉浏览器窗口
+3. 账号出现在列表里就绑好了，之后每天自动签到（电脑开着、这个用户已登录时）
+
+- 支持多个账号：重复上面两步
+- 删除账号：列表里点「删除」
+- 绑定后会自动创建每天 00:10 的任务；双击助手时也会检查今天有没有签过
+
+### 3.1 Windows 一键签到（命令行方式）
+
+账号已经在 `tokens.txt` 里时，也可以直接双击 `一键签到.bat` 跑一次。
 
 下载[最新 Release](https://github.com/youyizhidafeiyu/skland-checkin/releases/latest) 的 Windows 包（`skland-checkin-*-windows.zip`，约 30MB，win-x64，内含 `node.exe`，不用另外装 Node），解压后双击 `一键签到.bat`：
 
