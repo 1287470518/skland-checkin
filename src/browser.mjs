@@ -7,10 +7,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const CANDIDATES = [
   path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-  'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
-  'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
-  'C:\Program Files\Google\Chrome\Application\chrome.exe',
-  'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+  'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+  'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
 ];
 
 export function findBrowser() {
