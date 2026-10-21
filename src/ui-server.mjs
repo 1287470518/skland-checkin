@@ -17,9 +17,12 @@ const PORT = Number(process.env.SKLAND_UI_PORT || 8977);
 const HOST = '127.0.0.1';
 const TOKENS = path.join(ROOT, 'tokens.txt');
 const state = new State();
-const session = new BrowserSession(path.join(state.dir, 'browser-profile'), { port: 9339 });
+const session = new BrowserSession(path.join(state.dir, 'browser-profile'));
 
-const hostOk = (req) => /^(127\.0\.0\.1|localhost):\d+$/.test(String(req.headers.host || ''));
+const hostOk = (req) => {
+  const m = /^(127\.0\.0\.1|localhost):(\d+)$/.exec(String(req.headers.host || ''));
+  return !!m && Number(m[2]) === port;
+};
 const originOk = (req) => {
   const o = req.headers.origin;
   if (o) return o === 'http://127.0.0.1:' + port || o === 'http://localhost:' + port;
@@ -44,7 +47,14 @@ function readTokens() {
 }
 function writeTokens(list) {
   const lines = ['# 一行一个 token（不要提交到 git）', ...list.map((a) => a.token)];
-  fs.writeFileSync(TOKENS, lines.join('\n') + '\n', 'utf8');
+  const tmp = TOKENS + '.' + process.pid + '.tmp';
+  try {
+    fs.writeFileSync(tmp, lines.join('\n') + '\n', { encoding: 'utf8', flag: 'wx' });
+    fs.renameSync(tmp, TOKENS);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch { /* 清理失败不掩盖原错误 */ }
+    throw e;
+  }
 }
 function appendToken(token) {
   const list = readTokens();
@@ -140,7 +150,7 @@ async function refresh() {
 function msg(t, err) { $('msg').textContent = t || ''; $('msg').className = 'msg' + (err ? ' err' : ''); }
 async function run(btn, fn) { btn.disabled = true; try { await fn(); } catch (e) { msg(String(e.message || e), true); } finally { btn.disabled = false; } }
 $('login').onclick = () => run($('login'), async () => { msg('正在打开登录页，登录完再点第 ② 个按钮…'); await api('POST', '/api/login'); msg('登录页已打开，登录完成后点「获取 token 并绑定」'); refresh(); });
-$('token').onclick = () => run($('token'), async () => { msg('正在读取 token…'); const j = await api('POST', '/api/token'); msg('已绑定 ' + (j.nickname || '账号')); refresh(); });
+$('token').onclick = () => run($('token'), async () => { msg('正在读取 token…'); const j = await api('POST', '/api/token'); msg('已绑定 ' + (j.nickname || '账号') + (j.warning ? '（' + j.warning + '）' : '')); refresh(); });
 $('checkin').onclick = () => run($('checkin'), async () => { msg('正在签到…'); const j = await api('POST', '/api/checkin'); msg('签到完成：' + JSON.stringify(j.results)); refresh(); });
 refresh();
 </script></body></html>`;
@@ -195,10 +205,13 @@ const server = http.createServer(async (req, res) => {
 });
 
 let port = PORT;
+let started = false;
 function start() {
   server.once('error', onError);
   server.listen(port, HOST, () => {
     server.removeListener('error', onError);
+    if (started) return;
+    started = true;
     console.log('签到助手已启动：http://' + HOST + ':' + port);
     openAppWindow(port);
     // 启动时检查今天有没有签过：没签就签一次（不是补签，就是今天还没签）

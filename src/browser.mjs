@@ -57,10 +57,12 @@ export class BrowserSession {
   async ensure() {
     if (this.proc) return;
     // 端口被占（可能是别的调试浏览器）就换一个，避免连到别人的会话
+    let free = false;
     for (let i = 0; i < 10; i++) {
       try { await fetch('http://127.0.0.1:' + this.port + '/json/version'); this.port++; }
-      catch { break; }
+      catch { free = true; break; }
     }
+    if (!free) throw new Error('没有可用的调试端口');
     const exe = findBrowser();
     if (!exe) throw new Error('没有找到 Edge 或 Chrome');
     fs.mkdirSync(this.profileDir, { recursive: true });
