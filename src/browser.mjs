@@ -56,6 +56,11 @@ export class BrowserSession {
   }
   async ensure() {
     if (this.proc) return;
+    if (this.starting) { await this.starting; return; }
+    this.starting = this._start();
+    try { await this.starting; } finally { this.starting = null; }
+  }
+  async _start() {
     // 端口被占（可能是别的调试浏览器）就换一个，避免连到别人的会话
     let free = false;
     for (let i = 0; i < 10; i++) {
@@ -76,6 +81,7 @@ export class BrowserSession {
       'about:blank',
     ], { detached: true, stdio: 'ignore' });
     this.proc.on('error', () => { this.proc = null; });
+    this.proc.on('exit', () => { this.proc = null; });
     this.proc.unref();
     for (let i = 0; i < 40; i++) {
       await sleep(250);

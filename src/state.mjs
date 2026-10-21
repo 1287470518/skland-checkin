@@ -44,7 +44,7 @@ export class State {
       throw e;
     }
   }
-  get(token) { try { return this.read().accounts[keyOf(token)] || null; } catch { return null; } }
+  get(token) { return this.read().accounts[keyOf(token)] || null; }
   set(token, patch) {
     const o = this.read();
     const k = keyOf(token);
@@ -58,8 +58,5 @@ export class State {
   markAttempt(token, error) {
     this.set(token, { lastAttempt: new Date().toISOString(), lastError: error ? String(error).slice(0, 200) : null });
   }
-  signedToday(token) {
-    const c = this.get(token);
-    return !!(c && c.lastSuccess === localDate());
-  }
+  signedToday(token) { const c = this.get(token); return !!(c && c.lastSuccess === localDate()); }
 }

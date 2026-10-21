@@ -19,7 +19,11 @@ function readTokens() {
     return fs.readFileSync(TOKENS, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
       .map((l) => { try { const o = JSON.parse(l); return typeof o.token === 'string' ? { name: o.name || '', token: o.token } : null; } catch { return { name: '', token: l }; } })
       .filter((x) => x && x.token);
-  } catch { return []; }
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    console.error('tokens.txt 读不出来：' + (e.code || 'unknown'));
+    process.exit(1);
+  }
 }
 
 async function once(a, store) {
@@ -38,12 +42,13 @@ const store = new CredStore();
 const release = await acquireLock(store.dir);
 process.on('exit', release);
 const failed = [];
+const roleFailed = [];
 for (const a of list) {
   if (state.signedToday(a.token)) { console.log('今天已签，跳过：' + (state.get(a.token) || {}).nickname || ''); continue; }
   try {
     const ok = await once(a, store);
-    console.log((ok ? '签到完成：' : '有角色失败：') + ((state.get(a.token) || {}).nickname || ''));
-    if (!ok) failed.push(a);
+    console.log((ok ? '签到完成：' : '有角色失败（不重放，避免重复签到）') + ((state.get(a.token) || {}).nickname || ''));
+    if (!ok) roleFailed.push({ a, ok: false });
   } catch (e) {
     state.markAttempt(a.token, safeError(e));
     console.log('失败：' + safeError(e));
@@ -51,11 +56,14 @@ for (const a of list) {
   }
 }
 // 失败的重试一次（「失败就晚点再签」）
+let remaining = 0;
 for (const a of failed) {
   await sleep(60000);
   try {
     const ok = await once(a, store);
     console.log((ok ? '重试成功：' : '重试仍失败：') + ((state.get(a.token) || {}).nickname || ''));
-  } catch (e) { state.markAttempt(a.token, safeError(e)); console.log('重试失败：' + safeError(e)); }
+    if (!ok) remaining++;
+  } catch (e) { state.markAttempt(a.token, safeError(e)); console.log('重试失败：' + safeError(e)); remaining++; }
 }
+if (roleFailed.length || remaining) { console.log('有账号没签成功'); process.exit(1); }
 process.exit(0);

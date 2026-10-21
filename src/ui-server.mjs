@@ -75,7 +75,8 @@ function removeToken(token) {
 }
 
 const accountsView = () => readTokens().map((a) => {
-  const s = state.get(a.token) || {};
+  let s = {};
+  try { s = state.get(a.token) || {}; } catch { s = { lastError: '状态文件读取失败' }; }
   return {
     key: keyOf(a.token),
     nickname: s.nickname || a.name || '',
@@ -200,6 +201,9 @@ const server = http.createServer(async (req, res) => {
       let token;
       try { token = await readToken(session); }
       finally { await session.close(); }
+      const store = new CredStore();
+      const release = await acquireLock(store.dir);
+      try {
       const cred = await login(token);
       const apps = await getBindings(cred.cred, cred.signToken);
       // 一个账号可能绑多个游戏（明日方舟/终末地），每个绑定角色都记下来（审查：游戏 ID 要分在账号下面）
@@ -210,18 +214,20 @@ const server = http.createServer(async (req, res) => {
       const nickname = characters[0] ? characters[0].label : '';
       appendToken(token);
       state.set(token, { nickname, characters, userId: cred.userId || '', addedAt: new Date().toISOString() });
-      const store = new CredStore();
       try { store.put(token, cred); } catch { /* 缓存失败不影响绑定 */ }
       let warning = null;
       try { installDailyTask({ cliPath: path.join(ROOT, 'src', 'daily.mjs'), tokensPath: TOKENS }); }
       catch (e) { warning = '自动签到任务没装上（' + safeError(e) + '），可以稍后手动双击「设置每天自动签到.bat」'; }
       return json(res, 200, { ok: true, nickname, warning });
+      } finally { release(); }
     }
     if (req.method === 'POST' && /^\/api\/account\/[^/]+\/refresh$/.test(req.url)) {
       const key = decodeURIComponent(req.url.split('/')[3]);
       const hit = readTokens().find((a) => keyOf(a.token) === key);
       if (!hit) return json(res, 404, { error: '没有这个账号' });
       const store = new CredStore();
+      const release = await acquireLock(store.dir);
+      try {
       const cred = store.get(hit.token);
       const c = cred || await login(hit.token);
       const apps = await getBindings(c.cred, c.signToken);
@@ -232,6 +238,7 @@ const server = http.createServer(async (req, res) => {
       if (!cred) { try { store.put(hit.token, c); } catch { /* 缓存失败不影响 */ } }
       state.set(hit.token, { nickname: characters[0] ? characters[0].label : '', characters });
       return json(res, 200, { ok: true, characters });
+      } finally { release(); }
     }
     if (req.method === 'DELETE' && req.url.startsWith('/api/account/')) {
       const key = decodeURIComponent(req.url.slice('/api/account/'.length));
@@ -252,6 +259,7 @@ const server = http.createServer(async (req, res) => {
     }
     json(res, 404, { error: 'not found' });
   } catch (e) {
+    if (e && e.name === 'BusyError') return json(res, 409, { error: e.message });
     json(res, 502, { error: safeError(e) });
   }
 });
@@ -284,6 +292,8 @@ function openAppWindow(p) {
     const dir = path.join(state.dir, 'ui-profile');
     fs.mkdirSync(dir, { recursive: true });
     const proc = spawn(exe, ['--app=http://' + HOST + ':' + p, '--user-data-dir=' + dir, '--no-first-run', '--no-default-browser-check', '--window-size=860,680'], { detached: true, stdio: 'ignore' });
+    proc.on('error', () => {});
+    proc.on('exit', () => {});
     proc.unref();
   } catch { /* 没有浏览器也不影响服务本身 */ }
 }

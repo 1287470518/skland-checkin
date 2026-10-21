@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { checkinToken } from './core.js';
 import { CredStore } from './store.js';
 import { State, keyOf, localDate } from './state.mjs';
+import { acquireLock } from './lock.js';
 import { safeError } from './errors.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -21,6 +22,7 @@ export function listAccounts() {
 
 /** 签到一个 token；返回 { key, ok, results } 或 { key, error } */
 export async function checkinOne(token, { store = new CredStore() } = {}) {
+  const release = await acquireLock(store.dir);
   try {
     const cred = store.get(token);
     const { cred: used, results } = await checkinToken(token, { cred });
@@ -31,9 +33,9 @@ export async function checkinOne(token, { store = new CredStore() } = {}) {
     else st.markAttempt(token, '有角色失败');
     return { key: keyOf(token), ok, results };
   } catch (e) {
-    new State().markAttempt(token, safeError(e));
+    try { new State().markAttempt(token, safeError(e)); } catch { /* 状态写失败不掩盖签到错误 */ }
     return { key: keyOf(token), ok: false, error: safeError(e) };
-  }
+  } finally { release(); }
 }
 
 /** 签到所有账号；今天已签的跳过（除非 force） */
