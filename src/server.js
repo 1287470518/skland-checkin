@@ -122,7 +122,7 @@ async function handle(req, res) {
       const out = await task;
       return json(res, 200, out);
     } catch (e) {
-      if (e instanceof BusyError) return json(res, 409, { error: '另一个签到实例正在运行，稍后再试' });
+      if (e instanceof BusyError) return json(res, 409, { error: e.message });
       return json(res, 502, { error: safeError(e) });
     } finally {
       inflight.delete(key);

@@ -100,7 +100,7 @@ const main = async () => {
   let release;
   try { release = await acquireLock(store.dir); }
   catch (e) {
-    console.error('❌ ' + (e instanceof BusyError ? '另一个签到实例正在运行，等它结束再试' : '无法创建运行锁'));
+    console.error('❌ ' + (e instanceof BusyError ? e.message : '无法创建运行锁'));
     process.exit(1);
   }
   if (typeof process.on === 'function') process.on('exit', release);
