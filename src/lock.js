@@ -30,7 +30,8 @@ export async function acquireLock(dir) {
     try { info = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* 空/坏锁 */ }
     const pid = info && Number.isSafeInteger(info.pid) ? info.pid : null;
     if (pid && alive(pid)) throw new BusyError('另一个签到实例正在运行（pid ' + pid + '），等它结束再试');
-    throw new BusyError('发现上次运行留下的锁（持有进程已退出）。确认没有其它签到在跑后，删除 ' + file + ' 再重试');
+    if (pid) throw new BusyError('发现上次运行留下的锁（持有进程已退出）。确认没有其它签到在跑后，删除 ' + file + ' 再重试');
+    throw new BusyError('锁文件状态无法确认（可能上次运行异常退出）。确认没有其它签到在跑后，删除 ' + file + ' 再重试');
   }
   let released = false;
   return () => {
