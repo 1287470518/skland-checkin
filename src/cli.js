@@ -73,23 +73,35 @@ function usage() {
 
 const TASK_NAME = 'SklandCheckin';
 
-/** 读同名任务当前执行的命令；没有任务返回 null（审查 B2：先核归属，不覆盖别人的同名任务）。 */
-function existingTaskCommand() {
+/** 读同名任务：{state:'missing'|'exists'|'unknown', command, args}（审查 B2：未知状态不能当不存在）。 */
+function existingTask() {
+  let buf;
   try {
-    const buf = execFileSync('schtasks', ['/query', '/tn', TASK_NAME, '/xml'], { encoding: 'buffer', stdio: ['ignore', 'pipe', 'ignore'] });
-    let text;
+    buf = execFileSync('schtasks', ['/query', '/tn', TASK_NAME, '/xml'], { encoding: 'buffer', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (e) {
+    if (e && e.status === 1 && !(e.stdout && String(e.stdout).trim())) return { state: 'missing' };
+    return { state: 'unknown' };
+  }
+  let text;
+  try {
     if (buf[0] === 0xFF && buf[1] === 0xFE) text = buf.slice(2).toString('utf16le');
     else text = buf.toString('utf8');
-    const c = text.match(/<Command>(.*?)<\/Command>/);
-    const a = text.match(/<Arguments>(.*?)<\/Arguments>/);
-    if (!c) return null;
-    return c[1] + (a ? ' ' + a[1] : '');
-  } catch { return null; }
+  } catch { return { state: 'unknown' }; }
+  text = text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+  const c = text.match(/<Command>(.*?)<\/Command>/);
+  const a = text.match(/<Arguments>(.*?)<\/Arguments>/);
+  if (!c) return { state: 'unknown' };
+  return { state: 'exists', command: c[1], args: a ? a[1] : '' };
 }
 
-function taskBelongsToUs(command, cliPath) {
-  if (!command) return true;   // 还没有任务
-  return command.includes(path.dirname(path.dirname(cliPath)));
+/** 只有「不存在」或「确实指向本包的 cli.js」才允许改动；未知一律拒绝。 */
+function taskBelongsToUs(t, cliPath) {
+  if (t.state === 'missing') return true;
+  if (t.state !== 'exists') return false;
+  const cliAbs = path.resolve(cliPath);
+  const nodeBase = path.basename(t.command.replace(/^"|"$/g, '')).toLowerCase();
+  const args = t.args.replace(/^"|"$/g, '');
+  return (nodeBase === 'node.exe' || nodeBase === 'node') && args.includes(cliAbs);
 }
 
 /** 设置 Windows 任务计划：每天固定时间跑一次签到（审查：自动签到的缺口）。 */
@@ -101,7 +113,9 @@ function setupDailyTask(time) {
   const cli = fileURLToPath(import.meta.url);
   const tokens = path.join(path.dirname(cli), '..', 'tokens.txt');
   if (!fs.existsSync(tokens)) { console.error('没有找到 tokens.txt：' + tokens + '（先在包目录里双击「一键签到」配置一次）'); process.exit(2); }
-  if (!taskBelongsToUs(existingTaskCommand(), cli)) {
+  const cur = existingTask();
+  if (cur.state === 'unknown') { console.error('无法确认同名任务 "' + TASK_NAME + '" 的状态，为避免误操作已停止。'); process.exit(1); }
+  if (!taskBelongsToUs(cur, cli)) {
     console.error('已有同名任务 "' + TASK_NAME + '"，但不是这个包的；先手动删掉它再试。');
     process.exit(1);
   }
@@ -119,7 +133,9 @@ function setupDailyTask(time) {
 function removeDailyTask() {
   if (process.platform !== 'win32') { console.error('这个参数只支持 Windows'); process.exit(2); }
   const cli = fileURLToPath(import.meta.url);
-  if (!taskBelongsToUs(existingTaskCommand(), cli)) {
+  const cur = existingTask();
+  if (cur.state === 'unknown') { console.error('无法确认同名任务 "' + TASK_NAME + '" 的状态，为避免误操作已停止。'); process.exit(1); }
+  if (!taskBelongsToUs(cur, cli)) {
     console.error('同名任务 "' + TASK_NAME + '" 不是这个包的，不删。');
     process.exit(1);
   }

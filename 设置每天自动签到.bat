@@ -8,15 +8,14 @@ echo ==========================================
 echo   设置每天自动签到
 echo ==========================================
 echo.
-echo 设置后，电脑开着、这个 Windows 用户已登录时，每天会自动跑一次签到。
-echo.
-set /p "T=每天几点跑？直接回车用 08:00（24 小时制，例如 07:30）："
-if not defined T set "T=08:00"
+echo 默认每天 08:00 跑一次（电脑开着、这个 Windows 用户已登录时）。
+echo 想换时间：在命令行运行  node src\cli.js --install-task 07:30
 echo.
 chcp 65001 >nul
-"%NODE_EXE%" src\cli.js --install-task "%T%"
+"%NODE_EXE%" src\cli.js --install-task 08:00
 set "CODE=%errorlevel%"
 chcp 936 >nul 2>nul
+set "CODE=%errorlevel%"
 echo.
 pause >nul
 exit /b %CODE%
