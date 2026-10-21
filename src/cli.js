@@ -77,9 +77,11 @@ const TASK_NAME = 'SklandCheckin';
 function existingTask() {
   let buf;
   try {
-    buf = execFileSync('schtasks', ['/query', '/tn', TASK_NAME, '/xml'], { encoding: 'buffer', stdio: ['ignore', 'pipe', 'ignore'] });
+    buf = execFileSync('schtasks', ['/query', '/tn', TASK_NAME, '/xml'], { encoding: 'buffer', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) {
-    if (e && e.status === 1 && !(e.stdout && String(e.stdout).trim())) return { state: 'missing' };
+    let errText = '';
+    try { errText = e && e.stderr ? new TextDecoder('gbk').decode(e.stderr) : ''; } catch { errText = ''; }
+    if (e && e.status === 1 && !(e.stdout && String(e.stdout).trim()) && /找不到|not find|cannot find/i.test(errText)) return { state: 'missing' };
     return { state: 'unknown' };
   }
   let text;
@@ -100,8 +102,9 @@ function taskBelongsToUs(t, cliPath) {
   if (t.state !== 'exists') return false;
   const cliAbs = path.resolve(cliPath);
   const nodeBase = path.basename(t.command.replace(/^"|"$/g, '')).toLowerCase();
-  const args = t.args.replace(/^"|"$/g, '');
-  return (nodeBase === 'node.exe' || nodeBase === 'node') && args.includes(cliAbs);
+  const parts = (t.args.match(/"[^"]*"|\S+/g) || []).map((x) => x.replace(/^"|"$/g, ''));
+  const js = parts.find((x) => x.endsWith('.js'));
+  return (nodeBase === 'node.exe' || nodeBase === 'node') && parts.includes('--token-file') && !!js && path.resolve(js) === cliAbs;
 }
 
 /** 设置 Windows 任务计划：每天固定时间跑一次签到（审查：自动签到的缺口）。 */

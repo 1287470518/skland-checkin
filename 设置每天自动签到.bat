@@ -15,7 +15,6 @@ chcp 65001 >nul
 "%NODE_EXE%" src\cli.js --install-task 08:00
 set "CODE=%errorlevel%"
 chcp 936 >nul 2>nul
-set "CODE=%errorlevel%"
 echo.
 pause >nul
 exit /b %CODE%
