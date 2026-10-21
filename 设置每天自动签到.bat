@@ -14,7 +14,9 @@ set /p "T=每天几点跑？直接回车用 08:00（24 小时制，例如 07:30）："
 if not defined T set "T=08:00"
 echo.
 chcp 65001 >nul
-"%NODE_EXE%" src\cli.js --install-task %T%
+"%NODE_EXE%" src\cli.js --install-task "%T%"
+set "CODE=%errorlevel%"
 chcp 936 >nul 2>nul
 echo.
 pause >nul
+exit /b %CODE%

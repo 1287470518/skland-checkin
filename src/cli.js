@@ -73,14 +73,39 @@ function usage() {
 
 const TASK_NAME = 'SklandCheckin';
 
+/** 读同名任务当前执行的命令；没有任务返回 null（审查 B2：先核归属，不覆盖别人的同名任务）。 */
+function existingTaskCommand() {
+  try {
+    const buf = execFileSync('schtasks', ['/query', '/tn', TASK_NAME, '/xml'], { encoding: 'buffer', stdio: ['ignore', 'pipe', 'ignore'] });
+    let text;
+    if (buf[0] === 0xFF && buf[1] === 0xFE) text = buf.slice(2).toString('utf16le');
+    else text = buf.toString('utf8');
+    const c = text.match(/<Command>(.*?)<\/Command>/);
+    const a = text.match(/<Arguments>(.*?)<\/Arguments>/);
+    if (!c) return null;
+    return c[1] + (a ? ' ' + a[1] : '');
+  } catch { return null; }
+}
+
+function taskBelongsToUs(command, cliPath) {
+  if (!command) return true;   // 还没有任务
+  return command.includes(path.dirname(path.dirname(cliPath)));
+}
+
 /** 设置 Windows 任务计划：每天固定时间跑一次签到（审查：自动签到的缺口）。 */
 function setupDailyTask(time) {
+  time = String(time || '').trim();
   if (process.platform !== 'win32') { console.error('这个参数只支持 Windows；Linux/macOS 请用 cron'); process.exit(2); }
   if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(time)) { console.error('时间格式不对，例如 08:00'); process.exit(2); }
-  const node = process.execPath;
+  if (!/^node(\.exe)?$/i.test(path.basename(process.execPath))) { console.error('请用 node.exe 运行这条命令（--install-task 需要 Node 自己的路径）'); process.exit(2); }
   const cli = fileURLToPath(import.meta.url);
-  const tokens = path.resolve('tokens.txt');
-  const tr = '"' + node + '" "' + cli + '" --token-file "' + tokens + '"';
+  const tokens = path.join(path.dirname(cli), '..', 'tokens.txt');
+  if (!fs.existsSync(tokens)) { console.error('没有找到 tokens.txt：' + tokens + '（先在包目录里双击「一键签到」配置一次）'); process.exit(2); }
+  if (!taskBelongsToUs(existingTaskCommand(), cli)) {
+    console.error('已有同名任务 "' + TASK_NAME + '"，但不是这个包的；先手动删掉它再试。');
+    process.exit(1);
+  }
+  const tr = '"' + process.execPath + '" "' + cli + '" --token-file "' + tokens + '"';
   try {
     execFileSync('schtasks', ['/create', '/f', '/tn', TASK_NAME, '/tr', tr, '/sc', 'daily', '/st', time], { stdio: 'inherit' });
   } catch {
@@ -93,6 +118,11 @@ function setupDailyTask(time) {
 
 function removeDailyTask() {
   if (process.platform !== 'win32') { console.error('这个参数只支持 Windows'); process.exit(2); }
+  const cli = fileURLToPath(import.meta.url);
+  if (!taskBelongsToUs(existingTaskCommand(), cli)) {
+    console.error('同名任务 "' + TASK_NAME + '" 不是这个包的，不删。');
+    process.exit(1);
+  }
   try { execFileSync('schtasks', ['/delete', '/f', '/tn', TASK_NAME], { stdio: 'inherit' }); }
   catch { console.error('没有找到自动签到任务（或删除失败）。'); process.exit(1); }
   console.log('已取消每天自动签到。');
