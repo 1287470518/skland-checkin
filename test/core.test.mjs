@@ -377,10 +377,10 @@ test('M01：同一缓存目录第二个锁要报 Busy，释放后可再拿', asy
   const path = await import('node:path');
   const { acquireLock, BusyError } = await import('../src/lock.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skland-lock-'));
-  const release = acquireLock(dir);
-  assert.throws(() => acquireLock(dir), BusyError);
+  const release = await acquireLock(dir);
+  await assert.rejects(acquireLock(dir), BusyError);
   release();
-  const release2 = acquireLock(dir);
+  const release2 = await acquireLock(dir);
   release2();
 });
 
@@ -399,4 +399,5 @@ test('M02：缓存 version 不支持 / 条目字段坏要拒并保留原文件',
 test('M04：grant data.code 缺失或非字符串要拒（补假绿）', async () => {
   await assert.rejects(grantCode('fake', { retries: 0, fetchImpl: async () => okJson({ data: {}, status: 0 }) }), /grant/);
   await assert.rejects(grantCode('fake', { retries: 0, fetchImpl: async () => okJson({ data: { code: 123 }, status: 0 }) }), /grant/);
+  await assert.rejects(grantCode('fake', { retries: 0, fetchImpl: async () => okJson({ data: { code: '' }, status: 0 }) }), /grant/);
 });

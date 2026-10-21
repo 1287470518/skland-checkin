@@ -45,6 +45,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** 只重试「网络层/5xx」这类瞬时错误；业务错误（code≠0）不重试，避免重复消费一次性 code */
 const isTransient = (e, status) => status >= 500 || status === 429 || /fetch failed|ETIMEDOUT|ECONNRESET|aborted|timeout/i.test(String(e && e.message));
 
+/** 限量读响应正文：有流就按字节流读，避免超大响应先整块进内存（审查 L07） */
+async function readBody(res, limit) {
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        try { await reader.cancel(); } catch { /* 取消失败不影响报错 */ }
+        throw new CheckinError('STRUCTURE', { status: res.status });
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  }
+  const text = await res.text();
+  if (Buffer.byteLength(text, 'utf8') > limit) throw new CheckinError('STRUCTURE', { status: res.status });
+  return text;
+}
+
 async function requestOnce(url, { body, cred, signToken, method = 'POST', fetchImpl = fetch, timeoutMs = 15000 } = {}) {
   const u = new URL(url);
   const bs = method === 'GET' ? u.search.slice(1) : (body === undefined ? '' : pyJson(body));
@@ -57,9 +80,7 @@ async function requestOnce(url, { body, cred, signToken, method = 'POST', fetchI
     ...(method === 'POST' && body !== undefined ? { body: bs } : {}),
     signal: AbortSignal.timeout(timeoutMs),
   });
-  const text = await res.text();
-  // 响应体上限：异常大的响应直接按结构错误处理，避免占内存（审查 L07）
-  if (text.length > 5 * 1024 * 1024) throw new CheckinError('STRUCTURE', { status: res.status });
+  const text = await readBody(res, 5 * 1024 * 1024);
   let json;
   try { json = JSON.parse(text); }
   catch { throw new CheckinError('NON_JSON', { status: res.status }); }

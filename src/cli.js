@@ -98,7 +98,7 @@ const main = async () => {
   const store = new CredStore();
   // 单实例互斥：同一个缓存目录只允许一个签到进程（审查 M01）
   let release;
-  try { release = acquireLock(store.dir); }
+  try { release = await acquireLock(store.dir); }
   catch (e) {
     console.error('❌ ' + (e instanceof BusyError ? '另一个签到实例正在运行，等它结束再试' : '无法创建运行锁'));
     process.exit(1);

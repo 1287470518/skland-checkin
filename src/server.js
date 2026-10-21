@@ -94,7 +94,7 @@ async function handle(req, res) {
     if (inflight.has(key)) return json(res, 429, { error: '这个账号正在签到，稍等几秒再试' });
     const task = (async () => {
       const store = new CredStore();
-      const release = acquireLock(store.dir);   // 跨进程互斥（审查 M01）
+      const release = await acquireLock(store.dir);   // 跨进程互斥（审查 M01）
       try {
       let cred = body.noCache ? null : store.get(token);
       const { cred: used, results } = await checkinToken(token, { cred });

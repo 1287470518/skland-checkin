@@ -61,7 +61,7 @@ node src/cli.js --token "<你的 token>"
 0 8 * * * cd /path/to/skland-checkin && node src/cli.js --token-file tokens.txt --notify webhook --notify-url https://example.com/hook
 ```
 
-**Windows（任务计划程序）**：操作填 `node.exe`，参数填 `src\cli.js --token-file tokens.txt`，起始于填仓库目录。
+**Windows（任务计划程序）**：操作填 `node.exe`，参数填 `src\cli.js --token-file tokens.txt`，起始于填仓库目录；用便携包时，操作要填解压目录下 `node.exe` 的绝对路径。
 
 **GitHub Actions**：本仓库不提供 workflow。自行创建任务时，把 token 放进 Secret `SKLAND_TOKEN`，在步骤中显式映射：
 
@@ -151,7 +151,7 @@ CLI 退出码：`0` 表示角色成功/已签或合法空绑定；`1` 表示至�
 - 想强制重建：`--no-cache`
 - 想清掉某账号的缓存：删掉 `creds.json` 里对应的那条
 
-当前缓存只面向个人单实例使用：不要让 CLI、UI 和定时任务重叠运行。尚无跨进程锁、全局并发上限、整批时限或断开取消；缓存损坏/权限错误的区分与 schema 校验也尚未完善。旧文件权限不会自动迁移；POSIX mode 不代表 Windows ACL 隔离，请自行限制缓存目录权限。
+缓存目录里有 `.lock` 做单实例互斥：CLI 和本地 UI 在同一个缓存目录下不会同时读写，冲突时会提示「另一个签到实例正在运行」（UI 返回 409）。仍没有全局并发上限、整批时限或断开取消；缓存损坏/权限错误会区分并备份，schema 只做基础校验（version 与条目字段类型）。旧文件权限不会自动迁移；POSIX mode 不代表 Windows ACL 隔离，请自行限制缓存目录权限。
 
 ## 返回码含义
 
